@@ -1,0 +1,77 @@
+//@version=4
+strategy("Advanced Trading Bot with Security Measures", overlay=true)
+
+// Security Inputs
+api_key_secure = input("YOUR_BINANCE_API_KEY", title="API Key", type=input.string)
+api_secret_secure = input("YOUR_BINANCE_API_SECRET", title="API Secret", type=input.string)
+
+// Binance API Configuration
+api_key = request.security(api_key_secure, "Binance API Key")
+api_secret = request.security(api_secret_secure, "Binance API Secret")
+exchange = "BINANCE"
+
+// EMA Parameters
+short_ema_length = input(9, title="Short-Term EMA Length")
+long_ema_length = input(50, title="Long-Term EMA Length")
+short_ema = ema(close, short_ema_length)
+long_ema = ema(close, long_ema_length)
+
+// RSI Parameters
+rsi_length = input(14, title="RSI Period")
+overbought_level = input(70, title="Overbought Level")
+oversold_level = input(30, title="Oversold Level")
+rsi_value = rsi(close, rsi_length)
+
+// MACD Parameters
+macd_short_length = input(12, title="MACD Short EMA Length")
+macd_long_length = input(26, title="MACD Long EMA Length")
+macd_signal_length = input(9, title="MACD Signal EMA Length")
+[macd_line, signal_line, _] = macd(close, macd_short_length, macd_long_length, macd_signal_length)
+
+// Risk Management Parameters
+risk_per_trade = input(2, title="Risk Per Trade (%)") / 100
+risk_reward_ratio = input(2, title="Risk-Reward Ratio")
+max_positions = input(4, title="Max Positions")
+max_drawdown_limit = input(30, title="Max Drawdown Limit (%)") / 100
+drawdown_reduction_factor = input(2, title="Drawdown Reduction Factor")
+
+// Calculate Position Size
+account_size = strategy.equity
+position_size = (account_size * risk_per_trade) / (atr(14) * syminfo.pointvalue)
+
+// Calculate Stop-Loss and Take-Profit
+stop_loss_distance = atr(14)
+take_profit_distance = stop_loss_distance * risk_reward_ratio
+
+// Trading Conditions
+ema_condition = crossover(short_ema, long_ema)
+rsi_overbought = rsi_value > overbought_level
+rsi_oversold = rsi_value < oversold_level
+macd_histogram_positive = macd_line - signal_line > 0
+macd_crossover = crossover(macd_line, signal_line)
+macd_crossunder = crossunder(macd_line, signal_line)
+
+// Execute Buy and Sell Orders
+if (ema_condition and rsi_oversold and macd_histogram_positive and macd_crossover)
+    strategy.entry("Long", strategy.long, qty = position_size, stop = close - stop_loss_distance, takeprofit = close + take_profit_distance)
+
+if (crossunder(short_ema, long_ema) or rsi_overbought or (macd_histogram_positive and macd_crossunder))
+    strategy.entry("Short", strategy.short, qty = position_size, stop = close + stop_loss_distance, takeprofit = close - take_profit_distance)
+
+// Position Limits
+if (strategy.position_size > max_positions)
+    strategy.close_all()
+
+// Calculate Drawdown
+drawdown_percentage = ((account_size - strategy.equity) / account_size) * 100
+
+// Adjust Position Size During Drawdowns
+if (drawdown_percentage >= max_drawdown_limit)
+    position_size = position_size / drawdown_reduction_factor
+
+// Fetch TradingView data from Binance
+symbol_name = "BINANCE:BTCUSDT"
+interval = "1d" // Use desired interval
+tv_data = request.security(symbol_name, interval, close)
+
+plot(tv_data, color=color.blue, title="TradingView Data")
